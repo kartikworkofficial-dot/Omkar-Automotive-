@@ -3,7 +3,7 @@ import { MessageSquare, X, Send, Loader2, Bot, User, Phone, Calendar, Clock, Map
 import { motion, AnimatePresence } from "framer-motion";
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
 const QUICK_REPLIES = [
   { label: "Book a Service", icon: Calendar, action: "I want to book a service" },
