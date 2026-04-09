@@ -55,7 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      // This will redirect the entire page to Google instead of opening a popup
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Login failed:", error);
