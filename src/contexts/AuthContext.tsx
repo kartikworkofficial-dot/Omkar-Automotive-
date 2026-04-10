@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, onAuthStateChanged, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { User, onAuthStateChanged, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signOut, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
@@ -12,6 +12,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const ADMIN_EMAIL = 'rethinkbharatofficial@gmail.com';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -19,48 +20,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Completes the sign-in flow after returning from the provider redirect.
-    // (Also surfaces redirect-specific errors in the console.)
-    getRedirectResult(auth).catch((error) => {
-      console.error("Redirect login failed:", error);
-    });
+    const normalizeEmail = (email?: string | null) => email?.toLowerCase().trim() ?? '';
+    const isAdminEmail = (email?: string | null) => normalizeEmail(email) === ADMIN_EMAIL;
+    let mounted = true;
+
+    const resolveAdminStatus = async (currentUser: User) => {
+      const userRef = doc(db, 'users', currentUser.uid);
+      const userDoc = await getDoc(userRef);
+
+      if (userDoc.exists()) {
+        return userDoc.data().role === 'admin';
+      }
+
+      const role = isAdminEmail(currentUser.email) ? 'admin' : 'user';
+      await setDoc(userRef, {
+        email: currentUser.email,
+        role
+      });
+      return role === 'admin';
+    };
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!mounted) return;
       setUser(currentUser);
       
       if (currentUser) {
-        // Check if user is admin
         try {
-          const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-          if (userDoc.exists()) {
-            setIsAdmin(userDoc.data().role === 'admin');
-          } else {
-            // Create user document if it doesn't exist
-            // If it's the specific admin email, set as admin, otherwise user
-            const role = currentUser.email === 'rethinkbharatofficial@gmail.com' ? 'admin' : 'user';
-            await setDoc(doc(db, 'users', currentUser.uid), {
-              email: currentUser.email,
-              role: role
-            });
-            setIsAdmin(role === 'admin');
-          }
+          const admin = await resolveAdminStatus(currentUser);
+          if (mounted) setIsAdmin(admin);
         } catch (error) {
           console.error("Error checking admin status:", error);
-          setIsAdmin(false);
+          if (mounted) setIsAdmin(false);
         }
       } else {
-        setIsAdmin(false);
+        if (mounted) setIsAdmin(false);
       }
       
-      setLoading(false);
+      if (mounted) setLoading(false);
     });
 
-    return unsubscribe;
+    (async () => {
+      try {
+        const redirectResult = await getRedirectResult(auth);
+        if (redirectResult?.user && mounted) {
+          setUser(redirectResult.user);
+          const admin = await resolveAdminStatus(redirectResult.user);
+          if (mounted) setIsAdmin(admin);
+        }
+      } catch (error) {
+        console.error("Redirect login failed:", error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
   const login = async () => {
     const provider = new GoogleAuthProvider();
     try {
+      await setPersistence(auth, browserLocalPersistence);
       await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error("Login failed:", error);

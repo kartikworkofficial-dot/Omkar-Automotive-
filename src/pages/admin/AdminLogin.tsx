@@ -10,7 +10,7 @@ export function AdminLogin() {
   }
 
   if (user && isAdmin) {
-    return <Navigate to="/admin" />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return (
